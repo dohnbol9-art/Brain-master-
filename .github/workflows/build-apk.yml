@@ -1,0 +1,91 @@
+name: Build and Package APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Prepare environment and debug keystore
+        run: |
+          # Create .env from template if missing
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+
+          # Decode or generate debug keystore required for signing
+          if [ -f debug.keystore.base64 ]; then
+            echo "Decoding debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            echo "Generating fresh debug.keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android \
+              -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Prepare APK Output
+        run: |
+          mkdir -p build-artifacts
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk build-artifacts/BrainBattle-debug.apk
+            echo "APK size: $(ls -lh build-artifacts/BrainBattle-debug.apk | awk '{print $5}')"
+          else
+            echo "Error: app-debug.apk not found!"
+            find app/build/outputs/ -type f || true
+            exit 1
+          fi
+
+      - name: Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrainBattle-debug-apk
+          path: build-artifacts/BrainBattle-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Generate Build Summary
+        run: |
+          echo "## 🎮 Brain Battle: Mind Challenge APK Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Build Status:** SUCCESS" >> $GITHUB_STEP_SUMMARY
+          echo "📦 **Artifact:** \`BrainBattle-debug.apk\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📥 How to Download & Install:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to the [Actions tab](https://github.com/${{ github.repository }}/actions) on GitHub." >> $GITHUB_STEP_SUMMARY
+          echo "2. Click on this workflow run." >> $GITHUB_STEP_SUMMARY
+          echo "3. Scroll to the **Artifacts** section at the bottom." >> $GITHUB_STEP_SUMMARY
+          echo "4. Click on **BrainBattle-debug-apk** to download the ZIP file." >> $GITHUB_STEP_SUMMARY
+          echo "5. Extract \`BrainBattle-debug.apk\` and install it on your Android device (ensure 'Install unknown apps' is enabled)." >> $GITHUB_STEP_SUMMARY

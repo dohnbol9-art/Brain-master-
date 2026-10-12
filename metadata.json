@@ -1,0 +1,6 @@
+{
+  "name": "Brain Battle",
+  "description": "A complete brain training puzzle game with 20 game modes, 1000 levels, rewards, and AdMob integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

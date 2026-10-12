@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,6 +42,8 @@ fun GameHostScreen(
   var isCorrect by remember { mutableStateOf<Boolean?>(null) }
   var timeLeft by remember { mutableStateOf(60) }
   var showHintDialog by remember { mutableStateOf(false) }
+  var isHintRevealed by remember { mutableStateOf(false) }
+  var adStatusMessage by remember { mutableStateOf<String?>(null) }
   var showResults by remember { mutableStateOf(false) }
 
   // Timer countdown
@@ -96,7 +99,12 @@ fun GameHostScreen(
           fontWeight = FontWeight.Bold,
           fontSize = 16.sp
         )
-        IconButton(onClick = { showHintDialog = true }) {
+        IconButton(
+          onClick = {
+            adStatusMessage = null
+            showHintDialog = true
+          }
+        ) {
           Icon(Icons.Default.Lightbulb, contentDescription = "Hint", tint = VibrantOrange)
         }
       }
@@ -134,6 +142,30 @@ fun GameHostScreen(
             fontSize = 20.sp,
             modifier = Modifier.padding(bottom = 24.dp)
           )
+
+          if (isHintRevealed) {
+            Card(
+              shape = RoundedCornerShape(12.dp),
+              colors = CardDefaults.cardColors(containerColor = CardBackgroundElevated),
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 20.dp)
+            ) {
+              Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = VibrantOrange, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "Hint: ${puzzle.hint}",
+                  color = VibrantCyan,
+                  fontSize = 14.sp,
+                  fontWeight = FontWeight.Medium
+                )
+              }
+            }
+          }
 
           if (puzzle.options.isNotEmpty()) {
             puzzle.options.forEach { option ->
@@ -202,29 +234,101 @@ fun GameHostScreen(
   if (showHintDialog) {
     AlertDialog(
       onDismissRequest = { showHintDialog = false },
-      title = { Text("Level Hint") },
-      text = { Text(puzzle.hint) },
+      title = {
+        Text(
+          text = if (isHintRevealed) "Puzzle Hint" else "Unlock Hint",
+          fontWeight = FontWeight.Bold
+        )
+      },
+      text = {
+        Column {
+          if (isHintRevealed) {
+            Text(puzzle.hint, color = TextPrimary, fontSize = 15.sp)
+          } else {
+            Text(
+              text = "Use an available hint or watch a sponsored video to reveal the hint for this challenge.",
+              color = TextSecondary,
+              fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+              text = "Hints remaining: $hintsCount",
+              color = VibrantCyan,
+              fontWeight = FontWeight.SemiBold,
+              fontSize = 13.sp
+            )
+
+            if (adStatusMessage != null) {
+              Spacer(modifier = Modifier.height(10.dp))
+              Text(
+                text = adStatusMessage ?: "",
+                color = VibrantOrange,
+                fontSize = 12.sp
+              )
+            }
+          }
+        }
+      },
       confirmButton = {
-        TextButton(onClick = { showHintDialog = false }) {
-          Text("Got it", color = VibrantCyan)
+        if (isHintRevealed) {
+          TextButton(onClick = { showHintDialog = false }) {
+            Text("Close", color = VibrantCyan)
+          }
+        } else {
+          Column(horizontalAlignment = Alignment.End) {
+            if (hintsCount > 0) {
+              Button(
+                onClick = {
+                  onUseHint()
+                  isHintRevealed = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = VibrantCyan),
+                shape = RoundedCornerShape(10.dp)
+              ) {
+                Text("Use Hint (1)", color = DeepNavy, fontWeight = FontWeight.Bold)
+              }
+              Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            OutlinedButton(
+              onClick = {
+                adStatusMessage = null
+                if (activity != null) {
+                  AdManager.showRewarded(
+                    activity,
+                    onRewardEarned = {
+                      onUseHint()
+                      isHintRevealed = true
+                      showHintDialog = false
+                    },
+                    onAdClosed = {},
+                    onError = { message ->
+                      adStatusMessage = message
+                    }
+                  )
+                } else {
+                  adStatusMessage = "Ad is not ready yet."
+                }
+              },
+              shape = RoundedCornerShape(10.dp)
+            ) {
+              Icon(
+                Icons.Default.PlayCircleOutline,
+                contentDescription = null,
+                tint = VibrantOrange,
+                modifier = Modifier.size(16.dp)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text("Watch Ad for Hint", color = VibrantOrange)
+            }
+          }
         }
       },
       dismissButton = {
-        TextButton(onClick = {
-          if (activity != null) {
-            AdManager.showRewarded(
-              activity,
-              onRewardEarned = {
-                onUseHint()
-                showHintDialog = false
-              },
-              onAdClosed = {}
-            )
-          } else {
-            showHintDialog = false
+        if (!isHintRevealed) {
+          TextButton(onClick = { showHintDialog = false }) {
+            Text("Cancel", color = TextSecondary)
           }
-        }) {
-          Text("Watch Ad for Free Hint", color = VibrantOrange)
         }
       },
       containerColor = CardBackground,
